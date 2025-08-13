@@ -1,0 +1,690 @@
+{
+  "name": "Proposal Generation Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-proposal-generation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Proposal Generation Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "proposal-generation-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract job IDs from webhook payload\nconst payload = $input.all()[0].json;\nconst jobIds = payload.job_ids || [];\n\nif (jobIds.length === 0) {\n  throw new Error('No job IDs provided');\n}\n\n// Return each job ID as separate item for processing\nreturn jobIds.map(jobId => ({\n  json: {\n    job_id: jobId,\n    auto_create_docs: payload.auto_create_docs || true,\n    select_attachments: payload.select_attachments || true,\n    quality_threshold: payload.quality_threshold || 0.7\n  }\n}));"
+      },
+      "id": "extract-job-ids",
+      "name": "Extract Job IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/jobs/{{ $json.job_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fetch-job-details",
+      "name": "Fetch Job Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "content": "You are an expert Salesforce Agentforce Developer proposal analyzer. Analyze the job requirements and extract key information for proposal generation."
+            },
+            {
+              "role": "user",
+              "content": "Analyze this Upwork job posting and extract key requirements for a Salesforce Agentforce Developer proposal:\n\nJob Title: {{ $json.title }}\nDescription: {{ $json.description }}\nBudget: ${{ $json.hourly_rate }}/hr\nClient Rating: {{ $json.client_rating }}\nRequired Skills: {{ $json.skills_required.join(', ') }}\n\nProvide analysis in JSON format with:\n- key_requirements: array of main technical requirements\n- project_complexity: low/medium/high\n- estimated_hours: number\n- key_selling_points: array of relevant experience points to highlight\n- proposal_tone: professional/friendly/technical"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 1000
+        }
+      },
+      "id": "analyze-job-requirements",
+      "name": "Analyze Job Requirements",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/proposals/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "job_id",
+              "value": "={{ $('Extract Job IDs').item.json.job_id }}"
+            },
+            {
+              "name": "job_analysis",
+              "value": "={{ $json.choices[0].message.content }}"
+            },
+            {
+              "name": "auto_create_docs",
+              "value": "={{ $('Extract Job IDs').item.json.auto_create_docs }}"
+            },
+            {
+              "name": "quality_threshold",
+              "value": "={{ $('Extract Job IDs').item.json.quality_threshold }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 3
+          }
+        }
+      },
+      "id": "generate-proposal-content",
+      "name": "Generate Proposal Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "proposal-success-condition",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-proposal-success",
+      "name": "Check Proposal Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "create",
+        "title": "Proposal - {{ $('Fetch Job Details').item.json.title }}",
+        "body": {
+          "documentBody": {
+            "content": [
+              {
+                "paragraph": {
+                  "elements": [
+                    {
+                      "textRun": {
+                        "content": "{{ $('Generate Proposal Content').item.json.proposal_content }}",
+                        "textStyle": {
+                          "fontSize": {
+                            "magnitude": 11,
+                            "unit": "PT"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "create-google-doc",
+      "name": "Create Google Doc",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "search",
+        "query": "Salesforce case study OR Agentforce demo OR portfolio",
+        "options": {
+          "fields": "files(id,name,mimeType,size,webViewLink)",
+          "maxResults": 5
+        }
+      },
+      "id": "select-attachments",
+      "name": "Select Attachments",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1560,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine proposal data with Google Doc and attachments\nconst proposalData = $('Generate Proposal Content').item.json;\nconst jobData = $('Fetch Job Details').item.json;\nconst googleDoc = $('Create Google Doc').item.json;\nconst attachments = $('Select Attachments').all();\n\n// Calculate optimal bid amount\nconst baseBudget = jobData.hourly_rate || 75;\nconst bidAmount = Math.min(baseBudget * 0.95, baseBudget - 5); // Slightly under budget\n\nreturn [{\n  json: {\n    job_id: jobData.id,\n    job_title: jobData.title,\n    proposal_id: proposalData.proposal_id,\n    proposal_content: proposalData.proposal_content,\n    google_doc_id: googleDoc.documentId,\n    google_doc_url: `https://docs.google.com/document/d/${googleDoc.documentId}`,\n    bid_amount: bidAmount,\n    attachments: attachments.map(att => ({\n      id: att.json.id,\n      name: att.json.name,\n      url: att.json.webViewLink\n    })),\n    quality_score: proposalData.quality_score || 0.8,\n    created_at: new Date().toISOString(),\n    ready_for_submission: true\n  }\n}];"
+      },
+      "id": "combine-proposal-data",
+      "name": "Combine Proposal Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/proposals/{{ $json.proposal_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "httpMethod": "PUT",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "google_doc_url",
+              "value": "={{ $json.google_doc_url }}"
+            },
+            {
+              "name": "bid_amount",
+              "value": "={{ $json.bid_amount }}"
+            },
+            {
+              "name": "attachments",
+              "value": "={{ $json.attachments }}"
+            },
+            {
+              "name": "status",
+              "value": "READY_FOR_SUBMISSION"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "update-proposal-record",
+      "name": "Update Proposal Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "✅ **Proposal Generated Successfully**",
+        "attachments": [
+          {
+            "color": "good",
+            "title": "{{ $('Combine Proposal Data').item.json.job_title }}",
+            "title_link": "{{ $('Combine Proposal Data').item.json.google_doc_url }}",
+            "text": "High-quality proposal generated and ready for review.",
+            "fields": {
+              "item": [
+                {
+                  "title": "Bid Amount",
+                  "value": "${{ $('Combine Proposal Data').item.json.bid_amount }}/hr",
+                  "short": true
+                },
+                {
+                  "title": "Quality Score",
+                  "value": "{{ Math.round($('Combine Proposal Data').item.json.quality_score * 100) }}%",
+                  "short": true
+                },
+                {
+                  "title": "Attachments",
+                  "value": "{{ $('Combine Proposal Data').item.json.attachments.length }} files selected",
+                  "short": true
+                },
+                {
+                  "title": "Google Doc",
+                  "value": "<{{ $('Combine Proposal Data').item.json.google_doc_url }}|View Proposal>",
+                  "short": true
+                }
+              ]
+            },
+            "actions": [
+              {
+                "type": "button",
+                "text": "Review Proposal",
+                "url": "{{ $('Combine Proposal Data').item.json.google_doc_url }}"
+              },
+              {
+                "type": "button",
+                "text": "Submit Now",
+                "url": "http://localhost:3000/proposals/{{ $('Combine Proposal Data').item.json.proposal_id }}"
+              }
+            ],
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-proposal-success",
+      "name": "Slack: Proposal Success",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        2220,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "auto-submit-condition",
+              "leftValue": "={{ $('Combine Proposal Data').item.json.quality_score }}",
+              "rightValue": 0.85,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-auto-submit",
+      "name": "Check Auto Submit",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/n8n/trigger/browser-submission",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "proposal_ids",
+              "value": "=[\"{{ $('Combine Proposal Data').item.json.proposal_id }}\"]"
+            },
+            {
+              "name": "session_type",
+              "value": "proposal_submission"
+            },
+            {
+              "name": "stealth_mode",
+              "value": true
+            },
+            {
+              "name": "retry_attempts",
+              "value": "=3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "trigger-auto-submission",
+      "name": "Trigger Auto Submission",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "❌ **Proposal Generation Failed**",
+        "attachments": [
+          {
+            "color": "danger",
+            "title": "Error in Proposal Generation",
+            "text": "Job: {{ $('Fetch Job Details').item.json.title }}\\nError: {{ $('Generate Proposal Content').item.json.error || 'Unknown error' }}",
+            "fields": {
+              "item": [
+                {
+                  "title": "Job ID",
+                  "value": "{{ $('Extract Job IDs').item.json.job_id }}",
+                  "short": true
+                },
+                {
+                  "title": "Action Required",
+                  "value": "Manual review needed",
+                  "short": true
+                }
+              ]
+            },
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-proposal-failed",
+      "name": "Slack: Proposal Failed",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2660,
+        300
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Proposal Generation Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Job IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Job IDs": {
+      "main": [
+        [
+          {
+            "node": "Fetch Job Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Job Details": {
+      "main": [
+        [
+          {
+            "node": "Analyze Job Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Job Requirements": {
+      "main": [
+        [
+          {
+            "node": "Generate Proposal Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Proposal Content": {
+      "main": [
+        [
+          {
+            "node": "Check Proposal Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Proposal Success": {
+      "main": [
+        [
+          {
+            "node": "Create Google Doc",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Select Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: Proposal Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Combine Proposal Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Attachments": {
+      "main": [
+        [
+          {
+            "node": "Combine Proposal Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Proposal Data": {
+      "main": [
+        [
+          {
+            "node": "Update Proposal Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Proposal Record": {
+      "main": [
+        [
+          {
+            "node": "Slack: Proposal Success",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Auto Submit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Proposal Success": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Auto Submit": {
+      "main": [
+        [
+          {
+            "node": "Trigger Auto Submission",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Auto Submission": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Proposal Failed": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "upwork-automation"
+  },
+  "id": "proposal-generation-pipeline",
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "automation",
+      "name": "automation"
+    }
+  ]
+}

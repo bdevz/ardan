@@ -1,0 +1,1019 @@
+{
+  "name": "Browser Submission Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-browser-submission",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Browser Submission Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "browser-submission-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract proposal IDs from webhook payload\nconst payload = $input.all()[0].json;\nconst proposalIds = payload.proposal_ids || [];\n\nif (proposalIds.length === 0) {\n  throw new Error('No proposal IDs provided');\n}\n\n// Return each proposal ID as separate item for processing\nreturn proposalIds.map(proposalId => ({\n  json: {\n    proposal_id: proposalId,\n    session_type: payload.session_type || 'proposal_submission',\n    stealth_mode: payload.stealth_mode !== false,\n    retry_attempts: payload.retry_attempts || 3,\n    current_attempt: 1\n  }\n}));"
+      },
+      "id": "extract-proposal-ids",
+      "name": "Extract Proposal IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/proposals/{{ $json.proposal_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fetch-proposal-details",
+      "name": "Fetch Proposal Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "proposal-ready-condition",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "READY_FOR_SUBMISSION",
+              "operator": {
+                "type": "string",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-proposal-ready",
+      "name": "Check Proposal Ready",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/browser/get-session",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_type",
+              "value": "={{ $('Extract Proposal IDs').item.json.session_type }}"
+            },
+            {
+              "name": "stealth_mode",
+              "value": "={{ $('Extract Proposal IDs').item.json.stealth_mode }}"
+            },
+            {
+              "name": "purpose",
+              "value": "proposal_submission"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 3
+          }
+        }
+      },
+      "id": "get-browser-session",
+      "name": "Get Browser Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/browser/stagehand/navigate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $('Get Browser Session').item.json.session_id }}"
+            },
+            {
+              "name": "job_url",
+              "value": "={{ $('Fetch Proposal Details').item.json.job_url }}"
+            },
+            {
+              "name": "action",
+              "value": "navigate to job page and locate apply button"
+            },
+            {
+              "name": "wait_for_load",
+              "value": true
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 2
+          }
+        }
+      },
+      "id": "navigate-to-job",
+      "name": "Navigate to Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1340,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "navigation-success-condition",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-navigation-success",
+      "name": "Check Navigation Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/browser/stagehand/fill-form",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $('Get Browser Session').item.json.session_id }}"
+            },
+            {
+              "name": "proposal_content",
+              "value": "={{ $('Fetch Proposal Details').item.json.content }}"
+            },
+            {
+              "name": "bid_amount",
+              "value": "={{ $('Fetch Proposal Details').item.json.bid_amount }}"
+            },
+            {
+              "name": "attachments",
+              "value": "={{ $('Fetch Proposal Details').item.json.attachments }}"
+            },
+            {
+              "name": "form_type",
+              "value": "upwork_proposal"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 2
+          }
+        }
+      },
+      "id": "fill-proposal-form",
+      "name": "Fill Proposal Form",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1780,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "form-fill-success-condition",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-form-fill-success",
+      "name": "Check Form Fill Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/browser/director/submit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $('Get Browser Session').item.json.session_id }}"
+            },
+            {
+              "name": "confirm_submission",
+              "value": true
+            },
+            {
+              "name": "capture_confirmation",
+              "value": true
+            },
+            {
+              "name": "wait_for_redirect",
+              "value": true
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 2
+          }
+        }
+      },
+      "id": "submit-proposal",
+      "name": "Submit Proposal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2220,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "submission-success-condition",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-submission-success",
+      "name": "Check Submission Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/browser/capture-result",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $('Get Browser Session').item.json.session_id }}"
+            },
+            {
+              "name": "capture_screenshot",
+              "value": true
+            },
+            {
+              "name": "extract_confirmation",
+              "value": true
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "capture-confirmation",
+      "name": "Capture Confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2660,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/applications",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "proposal_id",
+              "value": "={{ $('Extract Proposal IDs').item.json.proposal_id }}"
+            },
+            {
+              "name": "job_id",
+              "value": "={{ $('Fetch Proposal Details').item.json.job_id }}"
+            },
+            {
+              "name": "status",
+              "value": "SUBMITTED"
+            },
+            {
+              "name": "submitted_at",
+              "value": "={{ new Date().toISOString() }}"
+            },
+            {
+              "name": "confirmation_screenshot",
+              "value": "={{ $('Capture Confirmation').item.json.screenshot_url }}"
+            },
+            {
+              "name": "upwork_application_id",
+              "value": "={{ $('Capture Confirmation').item.json.application_id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "create-application-record",
+      "name": "Create Application Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2880,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "🎉 **Proposal Submitted Successfully!**",
+        "attachments": [
+          {
+            "color": "good",
+            "title": "{{ $('Fetch Proposal Details').item.json.job_title }}",
+            "title_link": "{{ $('Fetch Proposal Details').item.json.job_url }}",
+            "text": "Automated submission completed successfully.",
+            "fields": {
+              "item": [
+                {
+                  "title": "Bid Amount",
+                  "value": "${{ $('Fetch Proposal Details').item.json.bid_amount }}/hr",
+                  "short": true
+                },
+                {
+                  "title": "Submission Time",
+                  "value": "{{ new Date().toLocaleString() }}",
+                  "short": true
+                },
+                {
+                  "title": "Application ID",
+                  "value": "{{ $('Capture Confirmation').item.json.application_id || 'Pending' }}",
+                  "short": true
+                },
+                {
+                  "title": "Session ID",
+                  "value": "{{ $('Get Browser Session').item.json.session_id }}",
+                  "short": true
+                }
+              ]
+            },
+            "image_url": "{{ $('Capture Confirmation').item.json.screenshot_url }}",
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-submission-success",
+      "name": "Slack: Submission Success",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        3100,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "retry-condition",
+              "leftValue": "={{ $('Extract Proposal IDs').item.json.current_attempt }}",
+              "rightValue": "={{ $('Extract Proposal IDs').item.json.retry_attempts }}",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-retry-attempts",
+      "name": "Check Retry Attempts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Increment retry attempt and add delay\nconst item = $input.all()[0].json;\nconst currentAttempt = item.current_attempt + 1;\nconst delaySeconds = Math.pow(2, currentAttempt) * 5; // Exponential backoff\n\n// Wait for delay\nawait new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));\n\nreturn [{\n  json: {\n    ...item,\n    current_attempt: currentAttempt,\n    retry_delay: delaySeconds,\n    retry_reason: 'Previous attempt failed'\n  }\n}];"
+      },
+      "id": "prepare-retry",
+      "name": "Prepare Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "🔄 **Retrying Proposal Submission**",
+        "attachments": [
+          {
+            "color": "warning",
+            "title": "{{ $('Fetch Proposal Details').item.json.job_title }}",
+            "text": "Attempt {{ $json.current_attempt }} of {{ $json.retry_attempts }}",
+            "fields": {
+              "item": [
+                {
+                  "title": "Retry Reason",
+                  "value": "{{ $json.retry_reason }}",
+                  "short": true
+                },
+                {
+                  "title": "Delay",
+                  "value": "{{ $json.retry_delay }}s",
+                  "short": true
+                }
+              ]
+            },
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-retry-notification",
+      "name": "Slack: Retry Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        2880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "❌ **Proposal Submission Failed**",
+        "attachments": [
+          {
+            "color": "danger",
+            "title": "{{ $('Fetch Proposal Details').item.json.job_title }}",
+            "title_link": "{{ $('Fetch Proposal Details').item.json.job_url }}",
+            "text": "All retry attempts exhausted. Manual intervention required.",
+            "fields": {
+              "item": [
+                {
+                  "title": "Final Attempt",
+                  "value": "{{ $('Extract Proposal IDs').item.json.current_attempt }} of {{ $('Extract Proposal IDs').item.json.retry_attempts }}",
+                  "short": true
+                },
+                {
+                  "title": "Proposal ID",
+                  "value": "{{ $('Extract Proposal IDs').item.json.proposal_id }}",
+                  "short": true
+                },
+                {
+                  "title": "Action Required",
+                  "value": "Manual submission needed",
+                  "short": false
+                }
+              ]
+            },
+            "actions": [
+              {
+                "type": "button",
+                "text": "View Proposal",
+                "url": "http://localhost:3000/proposals/{{ $('Extract Proposal IDs').item.json.proposal_id }}"
+              },
+              {
+                "type": "button",
+                "text": "Manual Submit",
+                "url": "{{ $('Fetch Proposal Details').item.json.job_url }}"
+              }
+            ],
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-submission-failed",
+      "name": "Slack: Submission Failed",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        2880,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "⚠️ **Proposal Not Ready for Submission**",
+        "attachments": [
+          {
+            "color": "warning",
+            "title": "Proposal Status Issue",
+            "text": "Proposal ID: {{ $('Extract Proposal IDs').item.json.proposal_id }}\\nStatus: {{ $('Fetch Proposal Details').item.json.status }}",
+            "fields": {
+              "item": [
+                {
+                  "title": "Expected Status",
+                  "value": "READY_FOR_SUBMISSION",
+                  "short": true
+                },
+                {
+                  "title": "Current Status",
+                  "value": "{{ $('Fetch Proposal Details').item.json.status }}",
+                  "short": true
+                }
+              ]
+            },
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-proposal-not-ready",
+      "name": "Slack: Proposal Not Ready",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3320,
+        220
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Browser Submission Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Proposal IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Proposal IDs": {
+      "main": [
+        [
+          {
+            "node": "Fetch Proposal Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Proposal Details": {
+      "main": [
+        [
+          {
+            "node": "Check Proposal Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Proposal Ready": {
+      "main": [
+        [
+          {
+            "node": "Get Browser Session",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: Proposal Not Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Browser Session": {
+      "main": [
+        [
+          {
+            "node": "Navigate to Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Navigate to Job": {
+      "main": [
+        [
+          {
+            "node": "Check Navigation Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Navigation Success": {
+      "main": [
+        [
+          {
+            "node": "Fill Proposal Form",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Retry Attempts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fill Proposal Form": {
+      "main": [
+        [
+          {
+            "node": "Check Form Fill Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Form Fill Success": {
+      "main": [
+        [
+          {
+            "node": "Submit Proposal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Retry Attempts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Proposal": {
+      "main": [
+        [
+          {
+            "node": "Check Submission Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Submission Success": {
+      "main": [
+        [
+          {
+            "node": "Capture Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Retry Attempts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Create Application Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Application Record": {
+      "main": [
+        [
+          {
+            "node": "Slack: Submission Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Submission Success": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Retry Attempts": {
+      "main": [
+        [
+          {
+            "node": "Prepare Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: Submission Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Retry": {
+      "main": [
+        [
+          {
+            "node": "Slack: Retry Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Retry Notification": {
+      "main": [
+        [
+          {
+            "node": "Get Browser Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Submission Failed": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Proposal Not Ready": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "upwork-automation"
+  },
+  "id": "browser-submission-pipeline",
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "automation",
+      "name": "automation"
+    }
+  ]
+}

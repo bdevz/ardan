@@ -1,0 +1,772 @@
+{
+  "name": "Notification Workflows",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-notification",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Notification Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "notification-trigger"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "job-discovered-condition",
+              "leftValue": "={{ $json.notification_type }}",
+              "rightValue": "job_discovered",
+              "operator": {
+                "type": "string",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-job-discovered",
+      "name": "Job Discovered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "proposal-generated-condition",
+              "leftValue": "={{ $json.notification_type }}",
+              "rightValue": "proposal_generated",
+              "operator": {
+                "type": "string",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-proposal-generated",
+      "name": "Proposal Generated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "application-submitted-condition",
+              "leftValue": "={{ $json.notification_type }}",
+              "rightValue": "application_submitted",
+              "operator": {
+                "type": "string",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-application-submitted",
+      "name": "Application Submitted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "error-alert-condition",
+              "leftValue": "={{ $json.notification_type }}",
+              "rightValue": "error_alert",
+              "operator": {
+                "type": "string",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-error-alert",
+      "name": "Error Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "🔍 **New Jobs Discovered**",
+        "attachments": [
+          {
+            "color": "good",
+            "title": "{{ $json.data.jobs_count || 1 }} High-Quality Jobs Found",
+            "text": "{{ $json.data.top_job_title || 'Job discovery completed' }}",
+            "fields": {
+              "item": [
+                {
+                  "title": "Budget Range",
+                  "value": "${{ $json.data.min_budget || 50 }}-${{ $json.data.max_budget || 100 }}/hr",
+                  "short": true
+                },
+                {
+                  "title": "Avg Client Rating",
+                  "value": "{{ $json.data.avg_client_rating || 4.5 }}⭐",
+                  "short": true
+                },
+                {
+                  "title": "Discovery Method",
+                  "value": "{{ $json.data.discovery_method || 'Automated Search' }}",
+                  "short": true
+                },
+                {
+                  "title": "Next Action",
+                  "value": "Generating proposals...",
+                  "short": true
+                }
+              ]
+            },
+            "actions": [
+              {
+                "type": "button",
+                "text": "View Jobs",
+                "url": "http://localhost:3000/jobs"
+              },
+              {
+                "type": "button",
+                "text": "Generate Proposals",
+                "url": "http://localhost:3000/proposals/generate"
+              }
+            ],
+            "footer": "Upwork Automation • Job Discovery",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-job-discovered",
+      "name": "Slack: Job Discovered",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "📝 **Proposal Generated**",
+        "attachments": [
+          {
+            "color": "good",
+            "title": "{{ $json.data.job_title || 'New Proposal Ready' }}",
+            "title_link": "{{ $json.data.google_doc_url }}",
+            "text": "AI-generated proposal is ready for review and submission.",
+            "fields": {
+              "item": [
+                {
+                  "title": "Bid Amount",
+                  "value": "${{ $json.data.bid_amount || 75 }}/hr",
+                  "short": true
+                },
+                {
+                  "title": "Quality Score",
+                  "value": "{{ Math.round(($json.data.quality_score || 0.8) * 100) }}%",
+                  "short": true
+                },
+                {
+                  "title": "Attachments",
+                  "value": "{{ ($json.data.attachments || []).length }} files",
+                  "short": true
+                },
+                {
+                  "title": "Generated At",
+                  "value": "{{ new Date($json.data.created_at || Date.now()).toLocaleString() }}",
+                  "short": true
+                }
+              ]
+            },
+            "actions": [
+              {
+                "type": "button",
+                "text": "Review Proposal",
+                "url": "{{ $json.data.google_doc_url || 'http://localhost:3000/proposals' }}"
+              },
+              {
+                "type": "button",
+                "text": "Submit Now",
+                "url": "http://localhost:3000/proposals/{{ $json.data.proposal_id }}/submit"
+              }
+            ],
+            "footer": "Upwork Automation • Proposal Generation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-proposal-generated",
+      "name": "Slack: Proposal Generated",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "🚀 **Application Submitted Successfully!**",
+        "attachments": [
+          {
+            "color": "good",
+            "title": "{{ $json.data.job_title || 'Application Submitted' }}",
+            "title_link": "{{ $json.data.job_url }}",
+            "text": "Automated proposal submission completed successfully.",
+            "fields": {
+              "item": [
+                {
+                  "title": "Bid Amount",
+                  "value": "${{ $json.data.bid_amount || 75 }}/hr",
+                  "short": true
+                },
+                {
+                  "title": "Submitted At",
+                  "value": "{{ new Date($json.data.submitted_at || Date.now()).toLocaleString() }}",
+                  "short": true
+                },
+                {
+                  "title": "Application ID",
+                  "value": "{{ $json.data.upwork_application_id || 'Pending' }}",
+                  "short": true
+                },
+                {
+                  "title": "Client Rating",
+                  "value": "{{ $json.data.client_rating || 'N/A' }}⭐",
+                  "short": true
+                }
+              ]
+            },
+            "image_url": "{{ $json.data.confirmation_screenshot }}",
+            "actions": [
+              {
+                "type": "button",
+                "text": "View Application",
+                "url": "http://localhost:3000/applications/{{ $json.data.application_id }}"
+              },
+              {
+                "type": "button",
+                "text": "Job Details",
+                "url": "{{ $json.data.job_url }}"
+              }
+            ],
+            "footer": "Upwork Automation • Application Submission",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-application-submitted",
+      "name": "Slack: Application Submitted",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "🚨 **System Error Alert**",
+        "attachments": [
+          {
+            "color": "danger",
+            "title": "{{ $json.data.error_type || 'System Error' }}",
+            "text": "{{ $json.data.error_message || 'An error occurred in the automation system' }}",
+            "fields": {
+              "item": [
+                {
+                  "title": "Component",
+                  "value": "{{ $json.data.component || 'Unknown' }}",
+                  "short": true
+                },
+                {
+                  "title": "Severity",
+                  "value": "{{ $json.data.severity || $json.priority || 'Medium' }}",
+                  "short": true
+                },
+                {
+                  "title": "Error Code",
+                  "value": "{{ $json.data.error_code || 'N/A' }}",
+                  "short": true
+                },
+                {
+                  "title": "Timestamp",
+                  "value": "{{ new Date($json.data.timestamp || Date.now()).toLocaleString() }}",
+                  "short": true
+                },
+                {
+                  "title": "Stack Trace",
+                  "value": "```{{ $json.data.stack_trace || 'Not available' }}```",
+                  "short": false
+                }
+              ]
+            },
+            "actions": [
+              {
+                "type": "button",
+                "text": "View Logs",
+                "url": "http://localhost:3000/system/logs"
+              },
+              {
+                "type": "button",
+                "text": "System Status",
+                "url": "http://localhost:3000/system/status"
+              }
+            ],
+            "footer": "Upwork Automation • Error Alert",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-error-alert",
+      "name": "Slack: Error Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "email-channel-condition",
+              "leftValue": "={{ $json.channels }}",
+              "rightValue": "email",
+              "operator": {
+                "type": "array",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-email-channel",
+      "name": "Send Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "sendTo": "{{ $json.data.email_recipients || 'admin@example.com' }}",
+        "subject": "Upwork Automation: {{ $json.notification_type.replace('_', ' ').toUpperCase() }}",
+        "emailType": "html",
+        "message": "<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n        .header { background: #4CAF50; color: white; padding: 20px; text-align: center; }\n        .content { padding: 20px; }\n        .footer { background: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; }\n        .button { background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }\n        .error { background: #f44336; }\n        .warning { background: #ff9800; }\n    </style>\n</head>\n<body>\n    <div class=\"header {{ $json.notification_type === 'error_alert' ? 'error' : '' }}\">\n        <h1>Upwork Automation Notification</h1>\n        <h2>{{ $json.notification_type.replace('_', ' ').toUpperCase() }}</h2>\n    </div>\n    \n    <div class=\"content\">\n        {% if $json.notification_type === 'job_discovered' %}\n            <h3>New Jobs Discovered</h3>\n            <p><strong>{{ $json.data.jobs_count || 1 }}</strong> high-quality jobs found matching your criteria.</p>\n            <p><strong>Top Job:</strong> {{ $json.data.top_job_title || 'N/A' }}</p>\n            <p><strong>Budget Range:</strong> ${{ $json.data.min_budget || 50 }}-${{ $json.data.max_budget || 100 }}/hr</p>\n        {% elif $json.notification_type === 'proposal_generated' %}\n            <h3>Proposal Generated</h3>\n            <p>A new proposal has been generated for: <strong>{{ $json.data.job_title || 'Job' }}</strong></p>\n            <p><strong>Bid Amount:</strong> ${{ $json.data.bid_amount || 75 }}/hr</p>\n            <p><strong>Quality Score:</strong> {{ Math.round(($json.data.quality_score || 0.8) * 100) }}%</p>\n        {% elif $json.notification_type === 'application_submitted' %}\n            <h3>Application Submitted</h3>\n            <p>Successfully submitted application for: <strong>{{ $json.data.job_title || 'Job' }}</strong></p>\n            <p><strong>Bid Amount:</strong> ${{ $json.data.bid_amount || 75 }}/hr</p>\n            <p><strong>Submitted At:</strong> {{ new Date($json.data.submitted_at || Date.now()).toLocaleString() }}</p>\n        {% elif $json.notification_type === 'error_alert' %}\n            <h3>System Error</h3>\n            <p><strong>Error Type:</strong> {{ $json.data.error_type || 'Unknown' }}</p>\n            <p><strong>Message:</strong> {{ $json.data.error_message || 'An error occurred' }}</p>\n            <p><strong>Component:</strong> {{ $json.data.component || 'Unknown' }}</p>\n        {% endif %}\n        \n        <p style=\"margin-top: 30px;\">\n            <a href=\"http://localhost:3000\" class=\"button\">View Dashboard</a>\n        </p>\n    </div>\n    \n    <div class=\"footer\">\n        <p>Upwork Automation System • {{ new Date().toLocaleString() }}</p>\n    </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-email-notification",
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "daily-summary-condition",
+              "leftValue": "={{ $json.notification_type }}",
+              "rightValue": "daily_summary",
+              "operator": {
+                "type": "string",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-daily-summary",
+      "name": "Daily Summary?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "📊 **Daily Automation Summary**",
+        "attachments": [
+          {
+            "color": "good",
+            "title": "{{ new Date().toLocaleDateString() }} Performance Report",
+            "text": "Here's your daily automation performance summary.",
+            "fields": {
+              "item": [
+                {
+                  "title": "Jobs Discovered",
+                  "value": "{{ $json.data.jobs_discovered || 0 }}",
+                  "short": true
+                },
+                {
+                  "title": "Proposals Generated",
+                  "value": "{{ $json.data.proposals_generated || 0 }}",
+                  "short": true
+                },
+                {
+                  "title": "Applications Submitted",
+                  "value": "{{ $json.data.applications_submitted || 0 }}",
+                  "short": true
+                },
+                {
+                  "title": "Success Rate",
+                  "value": "{{ Math.round(($json.data.success_rate || 0) * 100) }}%",
+                  "short": true
+                },
+                {
+                  "title": "Total Bid Amount",
+                  "value": "${{ $json.data.total_bid_amount || 0 }}",
+                  "short": true
+                },
+                {
+                  "title": "Avg Bid Rate",
+                  "value": "${{ Math.round($json.data.avg_bid_rate || 0) }}/hr",
+                  "short": true
+                }
+              ]
+            },
+            "actions": [
+              {
+                "type": "button",
+                "text": "View Full Report",
+                "url": "http://localhost:3000/reports/daily"
+              },
+              {
+                "type": "button",
+                "text": "Analytics Dashboard",
+                "url": "http://localhost:3000/analytics"
+              }
+            ],
+            "footer": "Upwork Automation • Daily Summary",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-daily-summary",
+      "name": "Slack: Daily Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        300
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Notification Trigger": {
+      "main": [
+        [
+          {
+            "node": "Job Discovered?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Proposal Generated?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Application Submitted?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Error Alert?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Daily Summary?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job Discovered?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Job Discovered",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Proposal Generated?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Proposal Generated",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Application Submitted?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Application Submitted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Error Alert?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Slack: Job Discovered": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Proposal Generated": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Application Submitted": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Error Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Notification": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Summary?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Slack: Daily Summary": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "upwork-automation"
+  },
+  "id": "notification-workflows",
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "automation",
+      "name": "automation"
+    }
+  ]
+}

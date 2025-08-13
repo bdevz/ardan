@@ -1,0 +1,74 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # API Server logs
+  - job_name: api-server
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: api-server
+          service: upwork-automation
+          __path__: /var/log/api/*.log
+
+  # Worker logs
+  - job_name: worker
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: worker
+          service: upwork-automation
+          __path__: /var/log/worker/*.log
+
+  # Scheduler logs
+  - job_name: scheduler
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: scheduler
+          service: upwork-automation
+          __path__: /var/log/scheduler/*.log
+
+  # Web interface logs
+  - job_name: web-interface
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: web-interface
+          service: upwork-automation
+          __path__: /var/log/web/*.log
+
+  # System logs
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          service: upwork-automation
+          __path__: /var/log/system/*.log
+
+  # Docker container logs
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: 'logstream'
+      - source_labels: ['__meta_docker_container_label_logging']
+        target_label: 'logging'

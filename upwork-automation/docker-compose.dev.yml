@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # API Server (Development)
+  api-server:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_CREDENTIALS_PATH=/app/credentials/google-credentials.json
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - PYTHONPATH=/app
+    volumes:
+      - ./api:/app
+      - ./shared:/app/shared
+      - ./credentials:/app/credentials:ro
+      - ./logs/api:/app/logs
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    networks:
+      - upwork-automation-dev
+
+  # Web Interface (Development)
+  web-interface:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_ENVIRONMENT=development
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./web/src:/app/src
+      - ./web/public:/app/public
+      - /app/node_modules
+    depends_on:
+      - api-server
+    restart: unless-stopped
+    networks:
+      - upwork-automation-dev
+
+  # PostgreSQL Database (Development)
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - upwork-automation-dev
+
+  # Redis (Development)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    restart: unless-stopped
+    networks:
+      - upwork-automation-dev
+
+  # Redis Commander (Development tool)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - upwork-automation-dev
+
+  # pgAdmin (Development tool)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@upwork-automation.local
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - db
+    networks:
+      - upwork-automation-dev
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  upwork-automation-dev:
+    driver: bridge

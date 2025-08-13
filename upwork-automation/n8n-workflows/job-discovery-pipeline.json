@@ -1,0 +1,568 @@
+{
+  "name": "Job Discovery Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-job-discovery",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Manual Trigger Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        480
+      ],
+      "webhookId": "job-discovery-manual"
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/n8n/trigger/job-discovery",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "keywords",
+              "value": "=[\"Salesforce Agentforce\", \"Salesforce AI\", \"Einstein\", \"Salesforce Developer\"]"
+            },
+            {
+              "name": "session_pool_size",
+              "value": "=3"
+            },
+            {
+              "name": "max_jobs",
+              "value": "=20"
+            },
+            {
+              "name": "filters",
+              "value": "={\"min_hourly_rate\": 50, \"min_client_rating\": 4.0, \"payment_verified\": true}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 3
+          }
+        }
+      },
+      "id": "trigger-browser-search",
+      "name": "Trigger Browser Job Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success-condition",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-search-success",
+      "name": "Check Search Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        390
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "DISCOVERED"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            },
+            {
+              "name": "sort_by",
+              "value": "match_score"
+            },
+            {
+              "name": "sort_order",
+              "value": "desc"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fetch-discovered-jobs",
+      "name": "Fetch Discovered Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter and rank jobs based on quality criteria\nconst jobs = $input.all();\nconst filteredJobs = [];\n\nfor (const item of jobs) {\n  const job = item.json;\n  \n  // Apply quality filters\n  if (job.client_rating >= 4.0 && \n      job.hourly_rate >= 50 && \n      job.client_payment_verified === true &&\n      job.match_score >= 0.7) {\n    \n    // Calculate priority score\n    const priorityScore = (\n      job.match_score * 0.4 +\n      (job.client_rating / 5.0) * 0.3 +\n      Math.min(job.hourly_rate / 100, 1.0) * 0.3\n    );\n    \n    filteredJobs.push({\n      ...job,\n      priority_score: priorityScore,\n      discovery_timestamp: new Date().toISOString()\n    });\n  }\n}\n\n// Sort by priority score\nfilteredJobs.sort((a, b) => b.priority_score - a.priority_score);\n\n// Return top 10 jobs\nreturn filteredJobs.slice(0, 10).map(job => ({ json: job }));"
+      },
+      "id": "filter-and-rank-jobs",
+      "name": "Filter and Rank Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-jobs-condition",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-jobs-found",
+      "name": "Check Jobs Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "🎯 **Job Discovery Complete**",
+        "attachments": [
+          {
+            "color": "good",
+            "title": "={{ $json.length }} High-Quality Jobs Found",
+            "text": "Top job: **{{ $json[0].title }}**\\nBudget: ${{ $json[0].hourly_rate }}/hr | Rating: {{ $json[0].client_rating }}⭐\\nMatch Score: {{ Math.round($json[0].match_score * 100) }}%",
+            "fields": {
+              "item": [
+                {
+                  "title": "Total Discovered",
+                  "value": "={{ $('Trigger Browser Job Search').item.json.parameters.max_jobs }}",
+                  "short": true
+                },
+                {
+                  "title": "High Quality",
+                  "value": "={{ $json.length }}",
+                  "short": true
+                },
+                {
+                  "title": "Next Action",
+                  "value": "Generating proposals...",
+                  "short": false
+                }
+              ]
+            },
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ],
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "slack-jobs-found",
+      "name": "Slack: Jobs Found",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/api/n8n/trigger/proposal-generation",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "job_ids",
+              "value": "={{ $json.map(job => job.id) }}"
+            },
+            {
+              "name": "auto_create_docs",
+              "value": true
+            },
+            {
+              "name": "select_attachments",
+              "value": true
+            },
+            {
+              "name": "quality_threshold",
+              "value": "=0.7"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "trigger-proposal-generation",
+      "name": "Trigger Proposal Generation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1560,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "⚠️ **No Quality Jobs Found**",
+        "attachments": [
+          {
+            "color": "warning",
+            "title": "Job Discovery Results",
+            "text": "No jobs met the quality criteria this round.",
+            "fields": {
+              "item": [
+                {
+                  "title": "Search Keywords",
+                  "value": "Salesforce Agentforce, AI, Einstein",
+                  "short": true
+                },
+                {
+                  "title": "Next Search",
+                  "value": "In 30 minutes",
+                  "short": true
+                }
+              ]
+            },
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-no-jobs",
+      "name": "Slack: No Jobs Found",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "#upwork-automation"
+        },
+        "text": "❌ **Job Discovery Failed**",
+        "attachments": [
+          {
+            "color": "danger",
+            "title": "Error in Job Search",
+            "text": "{{ $('Trigger Browser Job Search').item.json.message || 'Unknown error occurred' }}",
+            "fields": {
+              "item": [
+                {
+                  "title": "Error Details",
+                  "value": "Check API logs for more information",
+                  "short": false
+                }
+              ]
+            },
+            "footer": "Upwork Automation",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "id": "slack-search-failed",
+      "name": "Slack: Search Failed",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        300
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Trigger Browser Job Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger Webhook": {
+      "main": [
+        [
+          {
+            "node": "Trigger Browser Job Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Browser Job Search": {
+      "main": [
+        [
+          {
+            "node": "Check Search Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Search Success": {
+      "main": [
+        [
+          {
+            "node": "Fetch Discovered Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: Search Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Discovered Jobs": {
+      "main": [
+        [
+          {
+            "node": "Filter and Rank Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter and Rank Jobs": {
+      "main": [
+        [
+          {
+            "node": "Check Jobs Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Jobs Found": {
+      "main": [
+        [
+          {
+            "node": "Slack: Jobs Found",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trigger Proposal Generation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: No Jobs Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Jobs Found": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Proposal Generation": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: No Jobs Found": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Search Failed": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "upwork-automation"
+  },
+  "id": "job-discovery-pipeline",
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "automation",
+      "name": "automation"
+    }
+  ]
+}
